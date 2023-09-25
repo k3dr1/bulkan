@@ -1,0 +1,14 @@
+gitignore
+
+# Build stuff
+build.bat
+run.bat
+
+# Latest output
+a.exe
+
+# Debugging dumps of tgas
+tga_normals_man.tga
+tga_specular_man.tga
+tga_tangent_normals_man.tga
+tga_texture_man.tga
