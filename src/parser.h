@@ -119,6 +119,36 @@ int parse_obj(std::string filepath, Model* mdl){
 	return 1;
 }
 
-int new_parse_obj(std::string filepath, Model* mdl){
+// Starts at a whitespace and continues until a non-whitespace character is found
+void _skip_ws(const std::string& s, int& idx){
+	for (; idx < s.size(); idx++){
+		if (s[idx] != ' ') return;
+	}
+	idx++;
+	return;
+}
 
+void _skip_to_ws(const std::string& s, int& idx){
+	for (; idx < s.size(); idx++){
+		if (s[idx] == ' ') return;
+	}
+	idx++;
+	return;
+}
+
+int new_parse_obj(std::string filepath, Model* mdl){
+	std::ifstream file;
+	std::string line;
+	file.open(filepath, std::ios::in);
+
+	if(!file.is_open()){
+		std::cerr << "Problem parsing the .obj file: could not open" << '\n';
+		return -1;
+	} 
+
+	while (!file.eof()) {
+		std::getline(file, line, '\n');
+	}
+
+	return 0;
 }

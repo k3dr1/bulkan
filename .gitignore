@@ -7,6 +7,9 @@ run.bat
 # Latest output
 a.exe
 
+# Local resources
+res/local
+
 # Debugging dumps of tgas
 tga_normals_man.tga
 tga_specular_man.tga

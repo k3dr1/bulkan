@@ -41,8 +41,14 @@ struct DepthShader : public ShaderClass<std::uint32_t> {
 
 	vec<4> vertex(int iface, int nthvert) override {
 		vec<4> gl_Vertex = embed<4>(mdl.verts[mdl.face_vrtx[iface + nthvert]]);
-		gl_Vertex = Viewport*Projection*ModelView*gl_Vertex;
-		
+		varying_tri[nthvert] = proj<3>((Projection*ModelView*gl_Vertex).w_normalized());
+		//gl_Vertex = Viewport*Projection*ModelView*gl_Vertex;
+
+		return (Viewport*Projection*ModelView*gl_Vertex).w_normalized();
+	}
+
+	bool fragment(vec3 barycentric, std::uint32_t& color) override {
+
 	}
 };
 
