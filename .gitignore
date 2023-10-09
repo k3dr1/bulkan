@@ -5,7 +5,10 @@ build.bat
 run.bat
 
 # Latest output
+# Binary
 a.exe
+# Rendered image
+output.ppm
 
 # Local resources
 res/local
