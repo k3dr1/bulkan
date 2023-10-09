@@ -36,8 +36,9 @@ public:
 	// Accesses the normal map
 	// uv.y is inverted (1-uv.y)
 	vec3 get_normal(vec2 uv) const {
-		std::uint32_t color = m_normalmap->get_pixel(std::min(m_normalmap->width*uv.x, (double)m_normalmap->width-1), 
-				  std::min(m_normalmap->height*(1-uv.y), (double)m_normalmap->height-1));
+		std::uint32_t color = m_normalmap->get_pixel(
+			std::min(m_normalmap->width*uv.x,      (double)m_normalmap->width-1), 
+			std::min(m_normalmap->height*(1-uv.y), (double)m_normalmap->height-1));
 		vec3 res;
 		// x = red, y = green, z = blue
 		res[0] = ((color&0x000000ff)>>0)/255.f * 2.f - 1.f;

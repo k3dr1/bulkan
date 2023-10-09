@@ -5,84 +5,169 @@
 #include "./renderer.h"
 #include "./model.h"
 
-namespace LineParse {
+#define IS_NUM(x) ((47 < (x)) & ((x) < 58))
+
+// Helper Functions
+
+// Starts at a whitespace and continues until a non-whitespace character is found
+void _skip_ws(const std::string& s, unsigned int& idx){
+	if (s[idx] != ' ') return;
+	for (; idx < s.size(); idx++){
+		if (s[idx] != ' ') return;
+	}
+	idx++;
+	return;
+}
+
+// Starts at a non-whitespace and stops on a whitespace
+void _skip_to_ws(const std::string& s, unsigned int& idx){
+	for (; idx < s.size(); idx++){
+		if (s[idx] == ' ') return;
+	}
+	idx++;
+	return;
+}
+
+// Starts at a character that is not a forward-slash and stops on a forward-slash
+// if it starts on a forward-slash, then it stops on the next forward slash
+// if no forward-slashes are found after the given index, it returns npos
+void _skip_to_fs(const std::string& s, unsigned int& idx){
+	for (; idx < s.size(); idx++){
+		if (s[idx] == '/') return;
+	}
+	idx++;
+	return;
+}
+
+// Leaves the idx on the first non-numeric value
+// (numeric: 0..9)
+void _skip_num(const std::string& s, unsigned int& idx){
+	for (; idx < s.size(); idx++){
+		if (s[idx] <= 47 || 58 <= s[idx]) return;
+	}
+	idx++;
+	return;
+}
+
+namespace newLineParse {
 	void v(std::string& line, Model* mdl){
-		int curr;
-		int prev;
-		vec3 vertex;
-		curr = line.find(' ', 2);
-		vertex.x = std::stof(line.substr(2, curr - 2));
-		prev = curr;
+		// Skips the "v" part
+		unsigned int idx = 1;
+		vec3 vertex_position;
+		_skip_ws(line, idx);
+		vertex_position.x = std::stof(line.substr(idx));
 
-		curr = line.find(' ', prev + 1);
-		vertex.y = std::stof(line.substr(prev, curr - prev));
-		prev = curr;
+		_skip_to_ws(line, idx);
+		_skip_ws(line, idx);
+		vertex_position.y = std::stof(line.substr(idx));
 
-		curr = line.find(' ', prev + 1);
-		vertex.z = std::stof(line.substr(prev, curr - prev));
+		_skip_to_ws(line, idx);
+		_skip_ws(line, idx);
+		vertex_position.z = std::stof(line.substr(idx));
 
-		mdl->verts.push_back(vertex);
+		mdl->verts.push_back(vertex_position);
 	}
 	void vt(std::string& line, Model* mdl){
-		int curr;
-		int prev;
-		vec3 texture;
-		curr = line.find(' ', 4);
-		texture.x = std::stof(line.substr(4, curr - 4));
-		prev = curr;
+		// Skips the "vt" part
+		unsigned int idx = 2;
+		vec3 vertex_uv;
+		_skip_ws(line, idx);
+		vertex_uv.x = std::stof(line.substr(idx));
+		
+		_skip_ws(line, idx);
+		_skip_to_ws(line, idx);
+		vertex_uv.y = std::stof(line.substr(idx));
 
-		curr = line.find(' ', prev + 1);
-		texture.y = std::stof(line.substr(prev, curr - prev));
-		prev = curr;
-
-		curr = line.find(' ', prev + 1);
-		texture.z = std::stof(line.substr(prev, curr - prev));
-
-		mdl->tex_coords.push_back(texture);
+		mdl->tex_coords.push_back(vertex_uv);
 	}
 	void vn(std::string& line, Model* mdl){
-		int curr;
-		int prev;
-		vec3 normal;
-		curr = line.find(' ', 4);
-		normal.x = std::stof(line.substr(4, curr - 4));
-		prev = curr;
+		// Skips the "vn" part
+		unsigned int idx = 2;
+		vec3 vertex_normal;
+		_skip_ws(line, idx);
+		vertex_normal.x = std::stof(line.substr(idx));
 
-		curr = line.find(' ', prev + 1);
-		normal.y = std::stof(line.substr(prev, curr - prev));
-		prev = curr;
+		_skip_to_ws(line, idx);
+		_skip_ws(line, idx);
+		vertex_normal.y = std::stof(line.substr(idx));
 
-		curr = line.find(' ', prev + 1);
-		normal.z = std::stof(line.substr(prev, curr - prev));
+		_skip_to_ws(line, idx);
+		_skip_ws(line, idx);
+		vertex_normal.z = std::stof(line.substr(idx));
 
-		mdl->normals.push_back(normal);
+		mdl->normals.push_back(vertex_normal);
 	}
 	void f(std::string& line, Model* mdl){
-		unsigned int grp_beg = 2;
-		unsigned int grp_end = 0;
-		unsigned int elm_beg;
-		unsigned int elm_end;
-		for (int i = 0; i < 3; i++){
-			grp_end = line.find(' ', grp_beg);
+		// Skips the "f" part
+		unsigned int idx = 1;
 
-			elm_beg = grp_beg;
-			elm_end = line.find('/', elm_beg);
-			mdl->face_vrtx.push_back(
-					std::stoi(line.substr(elm_beg, elm_end - elm_beg)) - 1
-					);
-			elm_beg = elm_end + 1;
+		_skip_ws(line, idx);
+		mdl->face_vrtx.push_back(
+			std::stoi(line.substr(idx)) - 1);
+		_skip_num(line, idx);
+		if (line[idx] == '/') {
+			if (IS_NUM(line[idx+1])) {
+				idx++;
+				mdl->face_tex.push_back(
+					std::stoi(line.substr(idx)) - 1);
+				_skip_num(line, idx);
+			} else {
+				idx++;
+			}
+			if (line[idx] == '/') {
+				idx++;
+				if (IS_NUM(line[idx])) {
+					mdl->face_norm.push_back(
+						std::stoi(line.substr(idx)) - 1);
+					_skip_num(line, idx);
+				}
+			}
+		}
 
-			elm_end = line.find('/', elm_beg);
-			mdl->face_tex.push_back(
-					std::stoi(line.substr(elm_beg, elm_end - elm_beg)) - 1
-					);
-			elm_beg = elm_end + 1;
+		_skip_ws(line, idx);
+		mdl->face_vrtx.push_back(
+			std::stoi(line.substr(idx)) - 1);
+		_skip_num(line, idx);
+		if (line[idx] == '/') {
+			if (IS_NUM(line[idx+1])) {
+				idx++;
+				mdl->face_tex.push_back(
+					std::stoi(line.substr(idx)) - 1);
+				_skip_num(line, idx);
+			} else {
+				idx++;
+			}
+			if (line[idx] == '/') {
+				idx++;
+				if (IS_NUM(line[idx])) {
+					mdl->face_norm.push_back(
+						std::stoi(line.substr(idx)) - 1);
+					_skip_num(line, idx);
+				}
+			}
+		}
 
-			mdl->face_norm.push_back(
-					std::stoi(line.substr(elm_beg, grp_end - elm_beg)) - 1
-					);
-
-			grp_beg = grp_end + 1;
+		_skip_ws(line, idx);
+		mdl->face_vrtx.push_back(
+			std::stoi(line.substr(idx)) - 1);
+		_skip_num(line, idx);
+		if (line[idx] == '/') {
+			if (idx + 1 < line.size() && IS_NUM(line[idx+1])) {
+				idx++;
+				mdl->face_tex.push_back(
+					std::stoi(line.substr(idx)) - 1);
+				_skip_num(line, idx);
+			} else if (idx + 1 < line.size()) {
+				idx++;
+			} else {}
+			if (line[idx] == '/') {
+				idx++;
+				if (IS_NUM(line[idx])) {
+					mdl->face_norm.push_back(
+						std::stoi(line.substr(idx)) - 1);
+					_skip_num(line, idx);
+				}
+			}
 		}
 	}
 }
@@ -94,60 +179,28 @@ int parse_obj(std::string filepath, Model* mdl){
 	file.open(filepath, std::ios::in);
 
 	if(!file.is_open()){
-		return -1;
-	} 
-
-	while (!file.eof()){
-		std::getline(file, line, '\n');
-		line_state = line.substr(0, 2);
-		if (line_state == "v "){
-			LineParse::v(line, mdl);
-			continue;
-		}
-		if (line_state == "vt"){
-			LineParse::vt(line, mdl);
-			continue;
-		}
-		if (line_state == "vn"){
-			LineParse::vn(line, mdl);
-			continue;
-		}
-		if (line_state == "f "){
-			LineParse::f(line, mdl);
-		}
-	}
-	return 1;
-}
-
-// Starts at a whitespace and continues until a non-whitespace character is found
-void _skip_ws(const std::string& s, int& idx){
-	for (; idx < s.size(); idx++){
-		if (s[idx] != ' ') return;
-	}
-	idx++;
-	return;
-}
-
-void _skip_to_ws(const std::string& s, int& idx){
-	for (; idx < s.size(); idx++){
-		if (s[idx] == ' ') return;
-	}
-	idx++;
-	return;
-}
-
-int new_parse_obj(std::string filepath, Model* mdl){
-	std::ifstream file;
-	std::string line;
-	file.open(filepath, std::ios::in);
-
-	if(!file.is_open()){
 		std::cerr << "Problem parsing the .obj file: could not open" << '\n';
 		return -1;
 	} 
 
 	while (!file.eof()) {
 		std::getline(file, line, '\n');
+		line_state = line.substr(0, 2);
+		if (line_state == "v "){
+			newLineParse::v(line, mdl);
+			continue;
+		}
+		if (line_state == "vt"){
+			newLineParse::vt(line, mdl);
+			continue;
+		}
+		if (line_state == "vn"){
+			newLineParse::vn(line, mdl);
+			continue;
+		}
+		if (line_state == "f "){
+			newLineParse::f(line, mdl);
+		}
 	}
 
 	return 0;

@@ -68,6 +68,7 @@ public:
 			return data[y*width + x];
 		}
 		std::cerr << "Accessing out of bounds in Image<pixel_T>::get_pixel" << '\n';
+		std::cerr << "x = " << x << ", y = " << y << " while width = " << width << ", height = " << height << '\n';
 		return pixel_T();
 	}
 	void set_pixel(const unsigned int x, const unsigned int y, const pixel_T color) const {
@@ -76,6 +77,7 @@ public:
 			return;
 		}
 		std::cerr << "Accessing out of bounds in Image<pixel_T>::set_pixel" << '\n';
+		std::cerr << "x = " << x << ", y = " << y << " while width = " << width << ", height = " << height << '\n';
 		return;
 	}
 	int nbytes() const {
