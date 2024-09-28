@@ -1,22 +1,20 @@
 #include <algorithm>
 #include <array>
 #include <limits>
-#include <random>
 #include <cstdint>
-#include <fstream>
 #include <iostream>
+#include <stdint.h>
 #include <string>
 #include <vector>
-#include <sstream>
 #include <cmath>
+#include <chrono>
 
+#include "./mat_vec.h"
+#include "./parser.h"
 #include "./renderer.h"
 #include "./model.h"
 #include "./tgaimage.h"
-#include "./parser.h"
 #include "./image.h"
-#include "./mat_vec.h"
-#include "./mat_vec.cpp"
 
 // Color guide:
 // 0xAABBGGRR in hex notation within a uint32
@@ -48,7 +46,30 @@ struct DepthShader : public ShaderClass<std::uint32_t> {
 	}
 
 	bool fragment(vec3 barycentric, std::uint32_t& color) override {
+	}
+};
 
+struct FlatShader : public ShaderClass<std::uint32_t>{
+	mat<3,3> varying_pos;
+	mat<3,3> varying_nrm;
+	mat<3,2> varying_uv;
+
+	vec<4> vertex(int iface, int nthvert) override {
+		varying_nrm[nthvert] = mdl.normals[mdl.face_norm[iface + nthvert]];
+		varying_uv[nthvert] = proj<2>(mdl.tex_coords[mdl.face_tex[iface + nthvert]]);
+
+		vec4 gl_Vertex = embed<4>(mdl.verts[mdl.face_vrtx[iface + nthvert]]);
+
+		varying_pos[nthvert] = proj<3>((Projection*ModelView*gl_Vertex).w_normalized());
+
+		vec4 res = (Viewport*Projection*ModelView*gl_Vertex).w_normalized();
+
+		return res;
+	}
+
+	bool fragment(vec3 bary, std::uint32_t& pixel) override {
+		pixel = 0xa0a0a0;
+		return false;
 	}
 };
 
@@ -120,9 +141,30 @@ int main(){
 
 	int parse_status;
 	parse_status = parse_obj("./res/african_head.obj", &mdl);
+	//parse_status = parse_obj("./res/mustang/Ford Mustang 1966.obj", &mdl);
+
 	if (parse_status == -1){
 		std::cerr << "Error in the parse\n";
 		return -1;
+	} else {
+		std::cout << "Parsed successfully\n";
+		auto summary = [](std::vector<vec3> v, int n) { 
+			std::cout << "Top " << n << '\n';
+			for (int i = 0; i < n && i < v.size(); i++) {
+				std::cout << v[i] << '\n';
+			}
+			std::cout << "Bottom " << n << '\n';
+			for (int i = 0; i < n && i < v.size(); i++) {
+				std::cout << v[v.size() - i] << '\n';
+			}
+			std::cout << '\n';
+		};
+		std::cout << "==VERTS==" << '\n';
+		summary(mdl.verts, 3);
+		std::cout << "==TEX_COORDS==" << '\n';
+		summary(mdl.tex_coords, 3);
+		std::cout << "==NORMALS==" << '\n';
+		summary(mdl.normals, 3);
 	}
 
 	Image<std::uint32_t> pixels(WIDTH, HEIGHT);
@@ -150,12 +192,12 @@ int main(){
 	man_specular.write_tga_file("tga_specular_man.tga");
 	Image<std::uint32_t> specular(man_specular);
 
-	vec3 eye    = vec3{0.3, 0.3, 1.0};
+	vec3 eye    = vec3{0.0, 0.0, 5.0};
 	vec3 center = vec3{0, 0, 0};
 	vec3 up     = vec3{0, 1, 0};
 	double c = 3;
 
-	light_dir  = {0.8, 0.0, 1.0};
+	light_dir  = {0.5, 0.0, 1.0};
 	ModelView  = look_at(eye, center, up);
 	Projection = get_projection(c);
 	Viewport   = get_viewport(0, 0, WIDTH, HEIGHT, 255); 
@@ -164,10 +206,7 @@ int main(){
 	std::cout << "Generated projection matrix: \n" << Projection << '\n';
 	std::cout << "Generated viewport matrix: \n" << Viewport << '\n';
 
-	//GouraudShader shader;
-	//TextureShader shader(texture);
-	//TextureNormalShader shader;
-	TextureTangentNormalShader shader;
+	TextureTangentNormalShader shader{};
 	shader.uniform_M = Projection*ModelView;
 	shader.uniform_M_IT = (Projection*ModelView).invert_transpose();
 	shader.uniform_ambient = 5;
@@ -177,13 +216,26 @@ int main(){
 	mdl.m_normalmap = &tangent_normals;
 	mdl.m_specularmap = &specular;
 
+	FlatShader flat_shader;
+
 	std::array<vec<4>, 3> screen_coords;
 	for (size_t iface = 0; iface < mdl.face_vrtx.size(); iface += 3){
+		//DEBUG
+		auto begin = std::chrono::high_resolution_clock::now();
+		//ENDDEBUG
+
 		// Reading a face (triangle)
 		for (int nthvert = 0; nthvert < 3; nthvert++){
 			screen_coords[nthvert] = shader.vertex(iface, nthvert);
+			//screen_coords[nthvert] = flat_shader.vertex(iface, nthvert);
 		}
+		//draw_shaded_triangle(screen_coords, flat_shader, pixels, zbuffer);
 		draw_shaded_triangle(screen_coords, shader, pixels, zbuffer);
+
+		//DEBUG
+		auto end   = std::chrono::high_resolution_clock::now();
+		//std::cout << iface << "/" << mdl.face_vrtx.size() << ' ' << ((std::chrono::duration<float>)(end - begin).count()) << "\n";
+		//ENDDEBUG
 	}
 
 	std::string image_name = "output";

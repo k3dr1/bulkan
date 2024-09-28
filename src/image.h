@@ -1,8 +1,9 @@
 #pragma once
 #include <cstdint>
 #include <memory>
+#include <iostream>
 
-#include "tgaimage.cpp"
+#include "tgaimage.h"
 
 template<class pixel_T>
 class Image {
@@ -16,8 +17,8 @@ public:
 		    )
 	{}
 	// Constructor from TGAImage
-	Image(TGAImage tga_image)
-		: width(tga_image.width()),
+	Image(TGAImage tga_image) : 
+		width(tga_image.width()),
 		height(tga_image.height()),
 		data(
 				std::make_unique<pixel_T[]>(width*height)
@@ -48,7 +49,8 @@ public:
 			for (int i = 0; i < tga_image.width()*tga_image.height(); i++){
 				// TGA uses 1 byte grayscale here (0-255)
 				// I will just store that in the red section of std::uint32_t
-				memcpy((std::uint8_t*)data.get() + 4*i, ((std::uint8_t*)tga_image.get_data()) + i, sizeof(std::uint8_t));
+				data.get()[i] = *(tga_image.get_data() + i);
+				//memcpy((std::uint8_t*)data.get() + 4*i, ((std::uint8_t*)tga_image.get_data()) + i, sizeof(std::uint8_t));
 			}
 		} else {
 			std::cerr << "Weird bpp encountered while initializing Image<std::uint32_t>, bpp = " << tga_image.get_bpp() << '\n';
@@ -88,22 +90,3 @@ public:
 	const unsigned int height;
 	std::unique_ptr<pixel_T[]> const data;
 };
-
-template<>
-Image<std::uint8_t>::Image(TGAImage tga_image)
-	: width(tga_image.width()),
-	height(tga_image.height()),
-	data(
-		std::make_unique<std::uint8_t[]>(width*height)
-)
-{
-	if (tga_image.get_bpp() == 1){
-		std::cout << "Creating Image from tga_image with bpp=1" << '\n';
-		for (int i = 0; i < tga_image.width()*tga_image.height(); i++){
-			data.get()[i] = *(tga_image.get_data() + i);
-			//memcpy((std::uint8_t*)data.get(), tga_image.get_data() + i, sizeof(std::uint8_t));
-		}
-	} else {
-		std::cerr << "Weird bpp encountered while initializing Image<std::uint8_t>, bpp = " << tga_image.get_bpp() << '\n';
-	}
-}

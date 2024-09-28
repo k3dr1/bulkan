@@ -1,7 +1,6 @@
 gitignore
 
 # Build stuff
-build.bat
 run.bat
 
 # Latest output

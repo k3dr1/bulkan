@@ -1,9 +1,9 @@
 #pragma once
 #include <cstdint>
 #include <vector>
+
 #include "image.h"
 #include "mat_vec.h"
-#include "tgaimage.h"
 
 class Model{
 public:
