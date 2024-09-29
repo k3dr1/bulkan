@@ -1,6 +1,5 @@
 #include "renderer.h"
 
-
 // Applies the fn function to first three bytes (red, green, and blue)
 // be wary of the rollover
 std::uint32_t modify_channels(std::uint32_t color, std::uint8_t (*fn)(std::uint8_t)) {
@@ -24,6 +23,15 @@ std::uint32_t color_mult(std::uint32_t color, double scale){
 
 int clamp(int low, int val, int high) { return std::max(low, std::min(high, val)); }
 float clampf(float low, float val, float high) {return std::max(low, std::min(high, val));}
+
+mat<4,4> scale(float scale) {
+	return mat<4,4>{
+		scale,     0,     0, 0,
+		    0, scale,     0, 0,
+		    0,     0, scale, 0,
+		    0,     0,     0, 1,
+	};
+}
 
 mat<4,4> look_at(vec<3> eye, vec<3> center, vec<3> up) {
 	vec<3> k = (eye-center).normalized();

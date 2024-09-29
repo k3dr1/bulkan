@@ -6,7 +6,7 @@
 #include "./model.h"
 
 namespace ObjParser {
-	bool is_num(const char c);
+	constexpr bool is_num(const char c);
 
 	void skip_ws(const std::string& s, unsigned int& idx);
 	void skip_to_ws(const std::string& s, unsigned int& idx);

@@ -8,7 +8,7 @@
 
 namespace ObjParser {
 
-bool is_num(const char c) {
+constexpr bool is_num(const char c) {
 	return (47 < c) && (c < 58);
 }
 
@@ -186,7 +186,7 @@ int parse_obj(std::string filepath, Model* mdl){
 	file.open(filepath, std::ios::in);
 
 	if(!file.is_open()){
-		std::cerr << "Problem parsing the .obj file: could not open" << '\n';
+		std::cerr << "PARSER: Problem parsing the .obj file: could not open" << '\n';
 		return -1;
 	} 
 
@@ -207,8 +207,9 @@ int parse_obj(std::string filepath, Model* mdl){
 		}
 		if (line_state == "f "){
 			ObjParser::f(line, mdl);
+			continue;
 		}
+		std::cout << "PARSER: Weird line encountered [" << line << "]\n";
 	}
-
 	return 0;
 }

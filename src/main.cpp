@@ -49,6 +49,45 @@ struct DepthShader : public ShaderClass<std::uint32_t> {
 	}
 };
 
+struct PhongShader : public ShaderClass<std::uint32_t>{
+	int uniform_ambient;
+	mat<3,3> varying_pos;
+	mat<3,3> varying_nrm;
+	mat<3,2> varying_uv;
+
+	mat<4,4> uniform_M; // Projection*ModelView
+	mat<4,4> uniform_M_IT; // Projection*ModelView invert_transpose()
+
+	vec<4> vertex(int iface, int nthvert) override {
+		varying_nrm[nthvert] = mdl.normals[mdl.face_norm[iface + nthvert]];
+		varying_uv[nthvert] = proj<2>(mdl.tex_coords[mdl.face_tex[iface + nthvert]]);
+
+		vec4 gl_Vertex = embed<4>(mdl.verts[mdl.face_vrtx[iface + nthvert]]);
+
+		varying_pos[nthvert] = proj<3>((Projection*ModelView*gl_Vertex).w_normalized());
+
+		return (Viewport*Projection*ModelView*gl_Vertex).w_normalized();
+	}
+
+	bool fragment(vec3 barycentric, std::uint32_t& color) override {
+		constexpr std::uint32_t default_color = 0xa0a0a0;
+		constexpr std::uint8_t  default_channel = 0xa0;
+
+		vec3 surface_normal = (varying_nrm.transpose() * barycentric).normalized();
+
+		vec3 n = proj<3>(uniform_M_IT*embed<4>(surface_normal)).normalized(); // transformed normal
+		vec3 l = proj<3>(uniform_M   *embed<4>(light_dir)).normalized(); // transformed light_dir
+
+		float diffuse = std::max(0.0, n*l);
+
+		std::uint8_t* color_channel = (std::uint8_t*)&color;
+		for (int i = 0; i < 3; i++) {
+			color_channel[i] = uniform_ambient + default_channel*(1.0*diffuse);
+		}
+		return false;
+	}
+};
+
 struct FlatShader : public ShaderClass<std::uint32_t>{
 	mat<3,3> varying_pos;
 	mat<3,3> varying_nrm;
@@ -59,16 +98,14 @@ struct FlatShader : public ShaderClass<std::uint32_t>{
 		varying_uv[nthvert] = proj<2>(mdl.tex_coords[mdl.face_tex[iface + nthvert]]);
 
 		vec4 gl_Vertex = embed<4>(mdl.verts[mdl.face_vrtx[iface + nthvert]]);
-
 		varying_pos[nthvert] = proj<3>((Projection*ModelView*gl_Vertex).w_normalized());
 
-		vec4 res = (Viewport*Projection*ModelView*gl_Vertex).w_normalized();
-
-		return res;
+		return (Viewport*Projection*ModelView*gl_Vertex).w_normalized();
 	}
 
-	bool fragment(vec3 bary, std::uint32_t& pixel) override {
-		pixel = 0xa0a0a0;
+	bool fragment(vec3 barycentric, std::uint32_t& color) override {
+		std::uint8_t* color_channel = (std::uint8_t*)&color;
+		color = 0xa0a0a0;
 		return false;
 	}
 };
@@ -122,26 +159,25 @@ struct TextureTangentNormalShader : public ShaderClass<std::uint32_t>{
 		vec3 n = proj<3>(uniform_M_IT*embed<4>(normal)).normalized(); // transformed normal
 		vec3 l = proj<3>(uniform_M   *embed<4>(light_dir)).normalized(); // transformed light_dir
 		vec3 r = (n*(2.f*n*l) - l).normalized(); // l reflected across the n
-		std::uint32_t temp_color = mdl.get_texture(uv);
+		std::uint32_t texture_color = mdl.get_texture(uv);
 
 		float diffuse = std::max(0.0, n*l);
 		// we take the z component because the camera is on the z-axis after the transformation
 		float specular = std::max(0.0, std::pow(r.z, mdl.get_specular(uv)));
-		std::uint8_t* temp_p = (std::uint8_t*)&temp_color;
-		std::uint8_t* color_p = (std::uint8_t*)&color;
+		std::uint8_t* texture_color_channel = (std::uint8_t*)&texture_color;
+		std::uint8_t* color_channel = (std::uint8_t*)&color;
 		for (int i = 0; i < 3; i++){
-			color_p[i] = uniform_ambient + temp_p[i]*(1.0*diffuse + 0.6*specular);
+			color_channel[i] = uniform_ambient + texture_color_channel[i]*(1.0*diffuse + 0.6*specular);
 		}
 		return false;
-
 	};
 };
 
 int main(){
 
 	int parse_status;
-	parse_status = parse_obj("./res/african_head.obj", &mdl);
-	//parse_status = parse_obj("./res/mustang/Ford Mustang 1966.obj", &mdl);
+	//parse_status = parse_obj("./res/african_head.obj", &mdl);
+	parse_status = parse_obj("./res/local/audi/audi5.obj", &mdl);
 
 	if (parse_status == -1){
 		std::cerr << "Error in the parse\n";
@@ -172,33 +208,33 @@ int main(){
 	img_fill(pixels , BACKGROUND_COLOR);
 	img_fill(zbuffer, std::numeric_limits<double>::lowest());
 
-	TGAImage man_texture;
-	man_texture.read_tga_file("./res/african_head_diffuse.tga");
-	man_texture.write_tga_file("tga_texture_man.tga");
-	Image<std::uint32_t> texture(man_texture);
+	//TGAImage man_texture;
+	//man_texture.read_tga_file("./res/african_head_diffuse.tga");
+	//man_texture.write_tga_file("tga_texture_man.tga");
+	//Image<std::uint32_t> texture(man_texture);
 
-	TGAImage man_normals;
-	man_normals.read_tga_file("./res/african_head_nm.tga");
-	man_normals.write_tga_file("tga_normals_man.tga");
-	Image<std::uint32_t> normals(man_normals);
+	//TGAImage man_normals;
+	//man_normals.read_tga_file("./res/african_head_nm.tga");
+	//man_normals.write_tga_file("tga_normals_man.tga");
+	//Image<std::uint32_t> normals(man_normals);
 
-	TGAImage man_tangent_normals;
-	man_tangent_normals.read_tga_file("./res/african_head_nm_tangent.tga");
-	man_tangent_normals.write_tga_file("tga_tangent_normals_man.tga");
-	Image<std::uint32_t> tangent_normals(man_tangent_normals);
+	//TGAImage man_tangent_normals;
+	//man_tangent_normals.read_tga_file("./res/african_head_nm_tangent.tga");
+	//man_tangent_normals.write_tga_file("tga_tangent_normals_man.tga");
+	//Image<std::uint32_t> tangent_normals(man_tangent_normals);
 
-	TGAImage man_specular;
-	man_specular.read_tga_file("./res/african_head_spec.tga");
-	man_specular.write_tga_file("tga_specular_man.tga");
-	Image<std::uint32_t> specular(man_specular);
+	//TGAImage man_specular;
+	//man_specular.read_tga_file("./res/african_head_spec.tga");
+	//man_specular.write_tga_file("tga_specular_man.tga");
+	//Image<std::uint32_t> specular(man_specular);
 
-	vec3 eye    = vec3{0.0, 0.0, 5.0};
+	vec3 eye    = vec3{1.0, 0.7, 1.0};
 	vec3 center = vec3{0, 0, 0};
 	vec3 up     = vec3{0, 1, 0};
-	double c = 3;
+	double c = 10;
 
 	light_dir  = {0.5, 0.0, 1.0};
-	ModelView  = look_at(eye, center, up);
+	ModelView  = look_at(eye, center, up)*scale(0.7);
 	Projection = get_projection(c);
 	Viewport   = get_viewport(0, 0, WIDTH, HEIGHT, 255); 
 
@@ -206,17 +242,17 @@ int main(){
 	std::cout << "Generated projection matrix: \n" << Projection << '\n';
 	std::cout << "Generated viewport matrix: \n" << Viewport << '\n';
 
-	TextureTangentNormalShader shader{};
+	PhongShader shader{};
+
+	//TextureTangentNormalShader shader{};
 	shader.uniform_M = Projection*ModelView;
 	shader.uniform_M_IT = (Projection*ModelView).invert_transpose();
 	shader.uniform_ambient = 5;
 
-	mdl.m_texturemap = &texture;
+	//mdl.m_texturemap = &texture;
 	//mdl.m_normalmap = &normals;
-	mdl.m_normalmap = &tangent_normals;
-	mdl.m_specularmap = &specular;
-
-	FlatShader flat_shader;
+	//mdl.m_normalmap = &tangent_normals;
+	//mdl.m_specularmap = &specular;
 
 	std::array<vec<4>, 3> screen_coords;
 	for (size_t iface = 0; iface < mdl.face_vrtx.size(); iface += 3){
@@ -227,14 +263,13 @@ int main(){
 		// Reading a face (triangle)
 		for (int nthvert = 0; nthvert < 3; nthvert++){
 			screen_coords[nthvert] = shader.vertex(iface, nthvert);
-			//screen_coords[nthvert] = flat_shader.vertex(iface, nthvert);
+			//std::cout << "screen_coord=" << screen_coords[nthvert] << '\n';
 		}
-		//draw_shaded_triangle(screen_coords, flat_shader, pixels, zbuffer);
 		draw_shaded_triangle(screen_coords, shader, pixels, zbuffer);
 
 		//DEBUG
 		auto end   = std::chrono::high_resolution_clock::now();
-		//std::cout << iface << "/" << mdl.face_vrtx.size() << ' ' << ((std::chrono::duration<float>)(end - begin).count()) << "\n";
+		if (iface%3000 == 0) std::cout << iface << "/" << mdl.face_vrtx.size() << ' ' << ((std::chrono::duration<float>)(end - begin).count()) << "\n";
 		//ENDDEBUG
 	}
 
