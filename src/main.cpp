@@ -13,8 +13,9 @@
 #include "./parser.h"
 #include "./renderer.h"
 #include "./model.h"
-#include "./tgaimage.h"
 #include "./image.h"
+#include "./posterization.h"
+#include "./tgaimage.h"
 
 // Color guide:
 // 0xAABBGGRR in hex notation within a uint32
@@ -49,6 +50,75 @@ struct DepthShader : public ShaderClass<std::uint32_t> {
 	}
 };
 
+struct FlatShader : public ShaderClass<std::uint32_t>{
+	mat<3,3> varying_pos;
+	mat<3,3> varying_nrm;
+	mat<3,2> varying_uv;
+
+	vec<4> vertex(int iface, int nthvert) override {
+		varying_nrm[nthvert] = mdl.normals[mdl.face_norm[iface + nthvert]];
+		varying_uv[nthvert] = proj<2>(mdl.tex_coords[mdl.face_tex[iface + nthvert]]);
+
+		vec4 gl_Vertex = embed<4>(mdl.verts[mdl.face_vrtx[iface + nthvert]]);
+		varying_pos[nthvert] = proj<3>((Projection*ModelView*gl_Vertex).w_normalized());
+
+		return (Viewport*Projection*ModelView*gl_Vertex).w_normalized();
+	}
+
+	bool fragment(vec3 barycentric, std::uint32_t& color) override {
+		std::uint8_t* color_channel = (std::uint8_t*)&color;
+		color = 0xa0a0a0;
+		return false;
+	}
+};
+
+struct PosterizationShader : public ShaderClass<std::uint32_t>{
+	// ambient is not used
+	int uniform_ambient;
+	// floats are the upper bounds for each posterization color
+	std::vector<std::pair<std::uint32_t, float>> uniform_colors_with_bounds{{0xffa0a0a0, 1.0}};
+	mat<3,3> varying_pos;
+	mat<3,3> varying_nrm;
+	mat<3,2> varying_uv;
+
+	mat<4,4> uniform_M; // Projection*ModelView
+	mat<4,4> uniform_M_IT; // Projection*ModelView invert_transpose()
+
+	vec<4> vertex(int iface, int nthvert) override {
+		varying_nrm[nthvert] = mdl.normals[mdl.face_norm[iface + nthvert]];
+		varying_uv[nthvert] = proj<2>(mdl.tex_coords[mdl.face_tex[iface + nthvert]]);
+
+		vec4 gl_Vertex = embed<4>(mdl.verts[mdl.face_vrtx[iface + nthvert]]);
+
+		varying_pos[nthvert] = proj<3>((Projection*ModelView*gl_Vertex).w_normalized());
+
+		return (Viewport*Projection*ModelView*gl_Vertex).w_normalized();
+	}
+
+	bool fragment(vec3 barycentric, std::uint32_t& color) override {
+		constexpr std::uint32_t default_color = 0xa0a0a0;
+
+		vec3 surface_normal = (varying_nrm.transpose() * barycentric).normalized();
+
+		vec3 n = proj<3>(uniform_M_IT*embed<4>(surface_normal)).normalized(); // transformed normal
+		vec3 l = proj<3>(uniform_M   *embed<4>(light_dir)).normalized(); // transformed light_dir
+
+		float diffuse = std::max(0.0, n*l);
+
+		// I could write binary search here, but linear should do as well
+		// since number of posterization colors shouldn't be that high
+
+		for (const auto& color_with_upper_bound : uniform_colors_with_bounds) {
+			if (diffuse < color_with_upper_bound.second) {
+				color = color_with_upper_bound.first;
+				return false;
+			}
+		}
+		color = 0xffc0c0c0;
+		return false;
+	}
+};
+
 struct PhongShader : public ShaderClass<std::uint32_t>{
 	int uniform_ambient;
 	mat<3,3> varying_pos;
@@ -71,7 +141,7 @@ struct PhongShader : public ShaderClass<std::uint32_t>{
 
 	bool fragment(vec3 barycentric, std::uint32_t& color) override {
 		constexpr std::uint32_t default_color = 0xa0a0a0;
-		constexpr std::uint8_t  default_channel = 0xa0;
+		constexpr std::uint8_t  default_channel = 0xe0;
 
 		vec3 surface_normal = (varying_nrm.transpose() * barycentric).normalized();
 
@@ -88,24 +158,88 @@ struct PhongShader : public ShaderClass<std::uint32_t>{
 	}
 };
 
-struct FlatShader : public ShaderClass<std::uint32_t>{
+struct CarcassShader : public ShaderClass<std::uint32_t>{
+	// ambient is not used
+	int uniform_ambient;
+
 	mat<3,3> varying_pos;
 	mat<3,3> varying_nrm;
 	mat<3,2> varying_uv;
+
+	mat<4,4> uniform_M; // Projection*ModelView
+	mat<4,4> uniform_M_IT; // Projection*ModelView invert_transpose()
 
 	vec<4> vertex(int iface, int nthvert) override {
 		varying_nrm[nthvert] = mdl.normals[mdl.face_norm[iface + nthvert]];
 		varying_uv[nthvert] = proj<2>(mdl.tex_coords[mdl.face_tex[iface + nthvert]]);
 
 		vec4 gl_Vertex = embed<4>(mdl.verts[mdl.face_vrtx[iface + nthvert]]);
+
 		varying_pos[nthvert] = proj<3>((Projection*ModelView*gl_Vertex).w_normalized());
 
 		return (Viewport*Projection*ModelView*gl_Vertex).w_normalized();
 	}
 
 	bool fragment(vec3 barycentric, std::uint32_t& color) override {
+		constexpr std::uint32_t default_color = 0xa0a0a0;
+		constexpr double threshhold = 0.005;
+
+		if (barycentric.x <= threshhold || barycentric.y <= threshhold || barycentric.z <= threshhold) { 
+			vec3 surface_normal = (varying_nrm.transpose() * barycentric).normalized();
+			vec3 n = proj<3>(uniform_M_IT*embed<4>(surface_normal)).normalized(); // transformed normal
+			vec3 l = proj<3>(uniform_M   *embed<4>(light_dir)).normalized(); // transformed light_dir
+			float diffuse = std::max(0.0, n*l);
+			color = 0xffc0c0c0;
+			return false;
+		} else {
+			return true;
+		}
+	}
+};
+
+struct LastShader : public ShaderClass<std::uint32_t>{
+	// ambient is not used
+	int uniform_ambient;
+	vec3 uniform_to_camera;
+
+	mat<3,3> varying_pos;
+	mat<3,3> varying_nrm;
+	mat<3,2> varying_uv;
+	//mat<3,4> varying_screen_coords;
+
+	mat<4,4> uniform_M; // Projection*ModelView
+	mat<4,4> uniform_M_IT; // Projection*ModelView invert_transpose()
+
+	vec<4> vertex(int iface, int nthvert) override {
+		varying_nrm[nthvert] = mdl.normals[mdl.face_norm[iface + nthvert]];
+		varying_uv[nthvert] = proj<2>(mdl.tex_coords[mdl.face_tex[iface + nthvert]]);
+
+		vec4 gl_Vertex = embed<4>(mdl.verts[mdl.face_vrtx[iface + nthvert]]);
+
+		varying_pos[nthvert] = proj<3>((Projection*ModelView*gl_Vertex).w_normalized());
+		//varying_screen_coords[nthvert] = (Viewport*Projection*ModelView*gl_Vertex).w_normalized();
+
+		return (Viewport*Projection*ModelView*gl_Vertex).w_normalized();
+	}
+
+	bool fragment(vec3 barycentric, std::uint32_t& color) override {
+		constexpr std::uint32_t default_color  = 0xa0a0a0;
+		constexpr std::uint8_t default_channel = 0xe0;
+
+		vec3 surface_normal = (varying_nrm.transpose() * barycentric).normalized();
+		auto norm_along_x = surface_normal.x;
+		//vec2 screen_coord = proj<2>(varying_screen_coords.transpose() * barycentric);
+
+		vec3 n = proj<3>(uniform_M_IT*embed<4>(surface_normal)).normalized(); // transformed normal
+		vec3 l = proj<3>(uniform_M   *embed<4>(light_dir)).normalized(); // transformed light_dir
+
+		float diffuse = std::max(0.0, n*l);
+		//float fresnel_factor = std::pow(1.0 - uniform_to_camera*surface_normal, 1);
+
 		std::uint8_t* color_channel = (std::uint8_t*)&color;
-		color = 0xa0a0a0;
+		for (int i = 0; i < 3; i++) {
+			color_channel[i] = uniform_ambient + default_channel*(norm_along_x);
+		}
 		return false;
 	}
 };
@@ -203,6 +337,12 @@ int main(){
 		summary(mdl.normals, 3);
 	}
 
+	// Making the model "unit" size
+	double longest = 0;
+	for (auto pos : mdl.verts) longest = std::max(longest, pos.norm());
+	std::cout << "Longest=" << longest << '\n';
+	for (auto& pos : mdl.verts) pos = pos/(0.8*longest);
+
 	Image<std::uint32_t> pixels(WIDTH, HEIGHT);
 	Image<double> zbuffer(WIDTH, HEIGHT);
 	img_fill(pixels , BACKGROUND_COLOR);
@@ -228,10 +368,10 @@ int main(){
 	//man_specular.write_tga_file("tga_specular_man.tga");
 	//Image<std::uint32_t> specular(man_specular);
 
-	vec3 eye    = vec3{1.0, 0.7, 1.0};
+	vec3 eye    = vec3{1.0, 0.4, 1.0};
 	vec3 center = vec3{0, 0, 0};
 	vec3 up     = vec3{0, 1, 0};
-	double c = 10;
+	double c = 3;
 
 	light_dir  = {0.5, 0.0, 1.0};
 	ModelView  = look_at(eye, center, up)*scale(0.7);
@@ -242,13 +382,25 @@ int main(){
 	std::cout << "Generated projection matrix: \n" << Projection << '\n';
 	std::cout << "Generated viewport matrix: \n" << Viewport << '\n';
 
-	PhongShader shader{};
-
+	//FlatShader shader{};
+	//PosterizationShader shader{};
+	//CarcassShader shader{};
+	LastShader shader{};
+	//PhongShader shader{};
 	//TextureTangentNormalShader shader{};
+
 	shader.uniform_M = Projection*ModelView;
 	shader.uniform_M_IT = (Projection*ModelView).invert_transpose();
 	shader.uniform_ambient = 5;
 
+	// Exclusive to PosterizationShader
+	// other posterization palettes are in "posterization.h"
+	//shader.uniform_colors_with_bounds = RandomPosterization;
+
+	// Exclusive to Fresnel
+	shader.uniform_to_camera = (eye - center);
+
+	// Exclusive to TextureTangentNormalShader
 	//mdl.m_texturemap = &texture;
 	//mdl.m_normalmap = &normals;
 	//mdl.m_normalmap = &tangent_normals;
