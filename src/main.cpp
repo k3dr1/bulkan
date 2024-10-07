@@ -197,15 +197,14 @@ struct CarcassShader : public ShaderClass<std::uint32_t>{
 	}
 };
 
-struct LastShader : public ShaderClass<std::uint32_t>{
+struct CutoffShader : public ShaderClass<std::uint32_t>{
 	// ambient is not used
 	int uniform_ambient;
-	vec3 uniform_to_camera;
 
+	mat<3,3> varying_obj_coords;
 	mat<3,3> varying_pos;
 	mat<3,3> varying_nrm;
 	mat<3,2> varying_uv;
-	//mat<3,4> varying_screen_coords;
 
 	mat<4,4> uniform_M; // Projection*ModelView
 	mat<4,4> uniform_M_IT; // Projection*ModelView invert_transpose()
@@ -216,8 +215,8 @@ struct LastShader : public ShaderClass<std::uint32_t>{
 
 		vec4 gl_Vertex = embed<4>(mdl.verts[mdl.face_vrtx[iface + nthvert]]);
 
+		varying_obj_coords[nthvert] = proj<3>((gl_Vertex).w_normalized());
 		varying_pos[nthvert] = proj<3>((Projection*ModelView*gl_Vertex).w_normalized());
-		//varying_screen_coords[nthvert] = (Viewport*Projection*ModelView*gl_Vertex).w_normalized();
 
 		return (Viewport*Projection*ModelView*gl_Vertex).w_normalized();
 	}
@@ -226,19 +225,21 @@ struct LastShader : public ShaderClass<std::uint32_t>{
 		constexpr std::uint32_t default_color  = 0xa0a0a0;
 		constexpr std::uint8_t default_channel = 0xe0;
 
+		vec3 pos = (varying_obj_coords.transpose() * barycentric);
 		vec3 surface_normal = (varying_nrm.transpose() * barycentric).normalized();
-		auto norm_along_x = surface_normal.x;
-		//vec2 screen_coord = proj<2>(varying_screen_coords.transpose() * barycentric);
+
+		//if (0 <= pos.y) {
+		//	return true;
+		//}
 
 		vec3 n = proj<3>(uniform_M_IT*embed<4>(surface_normal)).normalized(); // transformed normal
 		vec3 l = proj<3>(uniform_M   *embed<4>(light_dir)).normalized(); // transformed light_dir
 
 		float diffuse = std::max(0.0, n*l);
-		//float fresnel_factor = std::pow(1.0 - uniform_to_camera*surface_normal, 1);
 
 		std::uint8_t* color_channel = (std::uint8_t*)&color;
 		for (int i = 0; i < 3; i++) {
-			color_channel[i] = uniform_ambient + default_channel*(norm_along_x);
+			color_channel[i] = uniform_ambient + default_channel*diffuse;
 		}
 		return false;
 	}
@@ -310,8 +311,8 @@ struct TextureTangentNormalShader : public ShaderClass<std::uint32_t>{
 int main(){
 
 	int parse_status;
-	//parse_status = parse_obj("./res/african_head.obj", &mdl);
-	parse_status = parse_obj("./res/local/audi/audi5.obj", &mdl);
+	parse_status = parse_obj("./res/african_head.obj", &mdl);
+	//parse_status = parse_obj("./res/local/audi/audi5.obj", &mdl);
 
 	if (parse_status == -1){
 		std::cerr << "Error in the parse\n";
@@ -348,25 +349,25 @@ int main(){
 	img_fill(pixels , BACKGROUND_COLOR);
 	img_fill(zbuffer, std::numeric_limits<double>::lowest());
 
-	//TGAImage man_texture;
-	//man_texture.read_tga_file("./res/african_head_diffuse.tga");
-	//man_texture.write_tga_file("tga_texture_man.tga");
-	//Image<std::uint32_t> texture(man_texture);
+	TGAImage man_texture;
+	man_texture.read_tga_file("./res/african_head_diffuse.tga");
+	man_texture.write_tga_file("tga_texture_man.tga");
+	Image<std::uint32_t> texture(man_texture);
 
-	//TGAImage man_normals;
-	//man_normals.read_tga_file("./res/african_head_nm.tga");
-	//man_normals.write_tga_file("tga_normals_man.tga");
-	//Image<std::uint32_t> normals(man_normals);
+	TGAImage man_normals;
+	man_normals.read_tga_file("./res/african_head_nm.tga");
+	man_normals.write_tga_file("tga_normals_man.tga");
+	Image<std::uint32_t> normals(man_normals);
 
-	//TGAImage man_tangent_normals;
-	//man_tangent_normals.read_tga_file("./res/african_head_nm_tangent.tga");
-	//man_tangent_normals.write_tga_file("tga_tangent_normals_man.tga");
-	//Image<std::uint32_t> tangent_normals(man_tangent_normals);
+	TGAImage man_tangent_normals;
+	man_tangent_normals.read_tga_file("./res/african_head_nm_tangent.tga");
+	man_tangent_normals.write_tga_file("tga_tangent_normals_man.tga");
+	Image<std::uint32_t> tangent_normals(man_tangent_normals);
 
-	//TGAImage man_specular;
-	//man_specular.read_tga_file("./res/african_head_spec.tga");
-	//man_specular.write_tga_file("tga_specular_man.tga");
-	//Image<std::uint32_t> specular(man_specular);
+	TGAImage man_specular;
+	man_specular.read_tga_file("./res/african_head_spec.tga");
+	man_specular.write_tga_file("tga_specular_man.tga");
+	Image<std::uint32_t> specular(man_specular);
 
 	vec3 eye    = vec3{1.0, 0.4, 1.0};
 	vec3 center = vec3{0, 0, 0};
@@ -385,9 +386,9 @@ int main(){
 	//FlatShader shader{};
 	//PosterizationShader shader{};
 	//CarcassShader shader{};
-	LastShader shader{};
+	//CutoffShader shader{};
 	//PhongShader shader{};
-	//TextureTangentNormalShader shader{};
+	TextureTangentNormalShader shader{};
 
 	shader.uniform_M = Projection*ModelView;
 	shader.uniform_M_IT = (Projection*ModelView).invert_transpose();
@@ -398,13 +399,13 @@ int main(){
 	//shader.uniform_colors_with_bounds = RandomPosterization;
 
 	// Exclusive to Fresnel
-	shader.uniform_to_camera = (eye - center);
+	//shader.uniform_to_camera = (eye - center);
 
 	// Exclusive to TextureTangentNormalShader
-	//mdl.m_texturemap = &texture;
-	//mdl.m_normalmap = &normals;
-	//mdl.m_normalmap = &tangent_normals;
-	//mdl.m_specularmap = &specular;
+	mdl.m_texturemap = &texture;
+	mdl.m_normalmap = &normals;
+	mdl.m_normalmap = &tangent_normals;
+	mdl.m_specularmap = &specular;
 
 	std::array<vec<4>, 3> screen_coords;
 	for (size_t iface = 0; iface < mdl.face_vrtx.size(); iface += 3){
